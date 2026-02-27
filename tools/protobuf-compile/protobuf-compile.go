@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 // protobuf-compile is a helper tool for running protoc against all of the
@@ -27,7 +27,8 @@ import (
 	"github.com/hashicorp/go-getter"
 )
 
-const protocVersion = "3.15.6"
+// Release v29.3 in GitHub corresponds to protoc v5.29.3, which is currently used in terraform-plugin-go
+const protocVersion = "29.3"
 
 // We also use protoc-gen-go and its grpc addon, but since these are Go tools
 // in Go modules our version selection for these comes from our top-level

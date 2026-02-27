@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package command
@@ -208,12 +208,14 @@ type Meta struct {
 	// It is initialized on first use.
 	configLoader *configload.Loader
 
-	// backendState is the currently active backend state
-	backendState *workdir.BackendConfigState
+	// backendConfigState is the currently active backend state.
+	// This is used when creating plan files.
+	backendConfigState *workdir.BackendConfigState
+	// stateStoreConfigState is the currently active state_store state.
+	// This is used when creating plan files.
+	stateStoreConfigState *workdir.StateStoreConfigState
 
-	// Variables for the context (private)
-	variableArgs arguments.FlagNameValueSlice
-	input        bool
+	input bool
 
 	// Targets for this context (private)
 	targets     []addrs.Targetable
@@ -571,17 +573,6 @@ func (m *Meta) defaultFlagSet(n string) *flag.FlagSet {
 	return f
 }
 
-// ignoreRemoteVersionFlagSet add the ignore-remote version flag to suppress
-// the error when the configured Terraform version on the remote workspace
-// does not match the local Terraform version.
-func (m *Meta) ignoreRemoteVersionFlagSet(n string) *flag.FlagSet {
-	f := m.defaultFlagSet(n)
-
-	f.BoolVar(&m.ignoreRemoteVersion, "ignore-remote-version", false, "continue even if remote and local Terraform versions are incompatible")
-
-	return f
-}
-
 // extendedFlagSet adds custom flags that are mostly used by commands
 // that are used to run an operation like plan or apply.
 func (m *Meta) extendedFlagSet(n string) *flag.FlagSet {
@@ -590,14 +581,6 @@ func (m *Meta) extendedFlagSet(n string) *flag.FlagSet {
 	f.BoolVar(&m.input, "input", true, "input")
 	f.Var((*arguments.FlagStringSlice)(&m.targetFlags), "target", "resource to target")
 	f.BoolVar(&m.compactWarnings, "compact-warnings", false, "use compact warnings")
-
-	if m.variableArgs.Items == nil {
-		m.variableArgs = arguments.NewFlagNameValueSlice("-var")
-	}
-	varValues := m.variableArgs.Alias("-var")
-	varFiles := m.variableArgs.Alias("-var-file")
-	f.Var(varValues, "var", "variables")
-	f.Var(varFiles, "var-file", "variable file")
 
 	// commands that bypass locking will supply their own flag on this var,
 	// but set the initial meta value to true as a failsafe.
@@ -822,12 +805,6 @@ func (m *Meta) SetWorkspace(name string) error {
 		return err
 	}
 	return nil
-}
-
-// isAutoVarFile determines if the file ends with .auto.tfvars or .auto.tfvars.json
-func isAutoVarFile(path string) bool {
-	return strings.HasSuffix(path, ".auto.tfvars") ||
-		strings.HasSuffix(path, ".auto.tfvars.json")
 }
 
 // FIXME: as an interim refactoring step, we apply the contents of the state

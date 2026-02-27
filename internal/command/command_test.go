@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package command
@@ -188,12 +188,13 @@ func testPlan(t *testing.T) *plans.Plan {
 	}
 
 	return &plans.Plan{
-		Backend: plans.Backend{
+		Backend: &plans.Backend{
 			// This is just a placeholder so that the plan file can be written
 			// out. Caller may wish to override it to something more "real"
 			// where the plan will actually be subsequently applied.
-			Type:   "local",
-			Config: backendConfigRaw,
+			Type:      "local",
+			Config:    backendConfigRaw,
+			Workspace: "default",
 		},
 		Changes: plans.NewChangesSrc(),
 
@@ -732,7 +733,10 @@ func testInteractiveInput(t *testing.T, answers []string) func() {
 // testInputMap configures tests so that the given answers are returned
 // for calls to Input when the right question is asked. The key is the
 // question "Id" that is used.
-func testInputMap(t *testing.T, answers map[string]string) func() {
+//
+// Calling code can optionally use the returned buffer to make assertions
+// about the prompts shown the to the user.
+func testInputMap(t *testing.T, answers map[string]string) *bytes.Buffer {
 	t.Helper()
 
 	// Disable test mode so input is called
@@ -740,15 +744,16 @@ func testInputMap(t *testing.T, answers map[string]string) func() {
 
 	// Set up reader/writers
 	defaultInputReader = bytes.NewBufferString("")
-	defaultInputWriter = new(bytes.Buffer)
+	inputWriter := new(bytes.Buffer)
+	defaultInputWriter = inputWriter
 
 	// Setup answers
 	testInputResponse = nil
 	testInputResponseMap = answers
 
-	// Return the cleanup
-	return func() {
-		var unusedAnswers = testInputResponseMap
+	// Queue the cleanup for the end of the test
+	t.Cleanup(func() {
+		unusedAnswers := testInputResponseMap
 
 		// First, clean up!
 		test = true
@@ -757,7 +762,9 @@ func testInputMap(t *testing.T, answers map[string]string) func() {
 		if len(unusedAnswers) > 0 {
 			t.Fatalf("expected no unused answers provided to command.testInputMap, got: %v", unusedAnswers)
 		}
-	}
+	})
+
+	return inputWriter
 }
 
 // testBackendState is used to make a test HTTP server to test a configured

@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package stackeval
@@ -135,6 +135,7 @@ func (r *RemovedComponentInstance) ModuleTreePlan(ctx context.Context) (*plans.P
 			DeferralAllowed:            true,
 			ExternalDependencyDeferred: deferred,
 			Forget:                     forget,
+			AllowRootEphemeralOutputs:  false, // TODO(issues/37822): Enable this.
 
 			// We want the same plantimestamp between all components and the stacks language
 			ForcePlanTimestamp: &plantimestamp,

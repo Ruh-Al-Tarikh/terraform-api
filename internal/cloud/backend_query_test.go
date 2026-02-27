@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package cloud
@@ -137,5 +137,44 @@ list.concept_pet.pets   id=legal-lamprey,legs=2     This is a legal-lamprey
 	// An error suggests that the state was not unlocked after the operation finished
 	if _, err := stateMgr.Lock(statemgr.NewLockInfo()); err != nil {
 		t.Fatalf("unexpected error locking state after successful plan: %s", err.Error())
+	}
+}
+
+func TestCloud_queryJSONWithDiags(t *testing.T) {
+	b, bCleanup := testBackendWithName(t)
+	defer bCleanup()
+
+	stream, close := terminal.StreamsForTesting(t)
+
+	b.renderer = &jsonformat.Renderer{
+		Streams:  stream,
+		Colorize: mockColorize(),
+	}
+
+	op, configCleanup, done := testOperationQuery(t, "./testdata/query-json-diag")
+	defer configCleanup()
+	defer done(t)
+
+	op.Workspace = testBackendSingleWorkspaceName
+
+	mockSROWorkspace(t, b, op.Workspace)
+
+	run, err := b.Operation(context.Background(), op)
+	if err != nil {
+		t.Fatalf("error starting operation: %v", err)
+	}
+
+	<-run.Done()
+	if run.Result != backendrun.OperationSuccess {
+		t.Fatalf("operation failed: %s", b.CLI.(*cli.MockUi).ErrorWriter.String())
+	}
+
+	testOut := close(t)
+	output := testOut.Stdout()
+
+	// Warning diagnostic message
+	testString := "Warning: Something went wrong"
+	if !strings.Contains(output, testString) {
+		t.Fatalf("Expected %q to contain %q but it did not", output, testString)
 	}
 }

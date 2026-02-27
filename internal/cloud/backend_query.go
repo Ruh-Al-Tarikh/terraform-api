@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package cloud
@@ -168,6 +168,11 @@ func (b *Cloud) renderQueryRunLogs(ctx context.Context, op *backendrun.Operation
 
 						if result.Len() > 0 {
 							b.renderer.Streams.Println(result.String())
+						}
+					default:
+						err := b.renderer.RenderLog(log)
+						if err != nil {
+							return err
 						}
 					}
 				}

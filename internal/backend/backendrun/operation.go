@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package backendrun
@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/backend"
+	"github.com/hashicorp/terraform/internal/command/arguments"
 	"github.com/hashicorp/terraform/internal/command/clistate"
 	"github.com/hashicorp/terraform/internal/command/views"
 	"github.com/hashicorp/terraform/internal/configs"
@@ -73,13 +74,19 @@ type Operation struct {
 
 	// PlanId is an opaque value that backends can use to execute a specific
 	// plan for an apply operation.
-	//
+	PlanId      string
+	PlanRefresh bool   // PlanRefresh will do a refresh before a plan
+	PlanOutPath string // PlanOutPath is the path to save the plan
+
 	// PlanOutBackend is the backend to store with the plan. This is the
 	// backend that will be used when applying the plan.
-	PlanId         string
-	PlanRefresh    bool   // PlanRefresh will do a refresh before a plan
-	PlanOutPath    string // PlanOutPath is the path to save the plan
+	// Only one of PlanOutBackend or PlanOutStateStore may be set.
 	PlanOutBackend *plans.Backend
+
+	// PlanOutStateStore is the state_store to store with the plan. This is the
+	// state store that will be used when applying the plan.
+	// Only one of PlanOutBackend or PlanOutStateStore may be set
+	PlanOutStateStore *plans.StateStore
 
 	// ConfigDir is the path to the directory containing the configuration's
 	// root module.
@@ -114,7 +121,7 @@ type Operation struct {
 	Targets              []addrs.Targetable
 	ActionTargets        []addrs.Targetable
 	ForceReplace         []addrs.AbsResourceInstance
-	Variables            map[string]UnparsedVariableValue
+	Variables            map[string]arguments.UnparsedVariableValue
 	StatePersistInterval int
 
 	// Some operations use root module variables only opportunistically or

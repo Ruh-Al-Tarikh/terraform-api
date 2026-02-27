@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package testing
@@ -24,6 +24,17 @@ var (
 			Attributes: map[string]*configschema.Attribute{
 				"id":    {Type: cty.String, Optional: true, Computed: true},
 				"value": {Type: cty.String, Optional: true},
+			},
+		},
+	}
+
+	TestingEphemeralResourceSchema = providers.Schema{
+		Body: &configschema.Block{
+			Attributes: map[string]*configschema.Attribute{
+				"value": {
+					Type:     cty.String,
+					Computed: true,
+				},
 			},
 		},
 	}
@@ -199,6 +210,11 @@ func NewProviderWithData(t *testing.T, store *ResourceStore) *MockProvider {
 						Body: WriteOnlyDataSourceSchema.Body,
 					},
 				},
+				EphemeralResourceTypes: map[string]providers.Schema{
+					"testing_resource": {
+						Body: TestingEphemeralResourceSchema.Body,
+					},
+				},
 				Functions: map[string]providers.FunctionDecl{
 					"echo": {
 						Parameters: []providers.FunctionParam{
@@ -297,6 +313,13 @@ func NewProviderWithData(t *testing.T, store *ResourceStore) *MockProvider {
 				// Just echo the first argument back as the result.
 				return providers.CallFunctionResponse{
 					Result: request.Arguments[0],
+				}
+			},
+			OpenEphemeralResourceFn: func(request providers.OpenEphemeralResourceRequest) providers.OpenEphemeralResourceResponse {
+				return providers.OpenEphemeralResourceResponse{
+					Result: cty.ObjectVal(map[string]cty.Value{
+						"value": cty.StringVal("secret"),
+					}),
 				}
 			},
 		},

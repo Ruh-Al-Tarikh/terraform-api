@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package e2etest
@@ -67,7 +67,7 @@ func TestMetaBackend_GetStateStoreProviderFactory(t *testing.T) {
 
 		// Setup the meta and test GetStateStoreProviderFactory
 		m := command.Meta{}
-		factory, diags := m.GetStateStoreProviderFactory(config, locks)
+		factory, diags := m.StateStoreProviderFactoryFromConfig(config, locks)
 		if diags.HasErrors() {
 			t.Fatalf("unexpected error : %s", err)
 		}

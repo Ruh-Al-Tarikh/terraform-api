@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package remote
@@ -219,6 +219,31 @@ func Test_grpcClient_Put(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), expectedErr) {
 			t.Fatalf("expected error to contain %q, but got: %s", expectedErr, err.Error())
+		}
+	})
+
+	t.Run("grpcClient refuses zero-byte writes", func(t *testing.T) {
+		provider := testing_provider.MockProvider{
+			ConfigureProviderCalled:   true,
+			ConfigureStateStoreCalled: true,
+			WriteStateBytesFn: func(req providers.WriteStateBytesRequest) providers.WriteStateBytesResponse {
+				t.Fatal("expected WriteStateBytes not to be called for zero-byte payload")
+				return providers.WriteStateBytesResponse{}
+			},
+		}
+
+		client := &grpcClient{
+			provider: &provider,
+			typeName: typeName,
+			stateId:  stateId,
+		}
+
+		diags := client.Put(nil)
+		if !diags.HasErrors() {
+			t.Fatalf("expected diagnostics when attempting to write zero bytes")
+		}
+		if provider.WriteStateBytesCalled {
+			t.Fatalf("provider WriteStateBytes should not be called")
 		}
 	})
 }

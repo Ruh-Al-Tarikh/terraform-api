@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package graph
@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform/internal/configs"
 	"github.com/hashicorp/terraform/internal/logging"
 	"github.com/hashicorp/terraform/internal/moduletest"
+	"github.com/hashicorp/terraform/internal/moduletest/mocking"
 	"github.com/hashicorp/terraform/internal/providers"
 	"github.com/hashicorp/terraform/internal/terraform"
 	"github.com/hashicorp/terraform/internal/tfdiags"
@@ -161,6 +162,24 @@ func (n *NodeTestRun) execute(ctx *EvalContext, waiter *operationWaiter) {
 		return
 	}
 
+	// Evaluate the override blocks for this test run.
+	// We use a context that only contains functions, and thus references are currently
+	// not supported in the override/mock blocks.
+	hclCtx, diags := ctx.HclContext(nil)
+	if diags != nil {
+		run.Status = moduletest.Error
+		run.Diagnostics = run.Diagnostics.Append(diags)
+		return
+	}
+
+	overrides, diags := mocking.PackageOverrides(hclCtx, run.Config, file.Config, mocks)
+	if diags != nil {
+		run.Status = moduletest.Error
+		run.Diagnostics = run.Diagnostics.Append(diags)
+		return
+	}
+	ctx.SetOverrides(n.run, overrides)
+
 	n.testValidate(providers, waiter)
 	if run.Diagnostics.HasErrors() {
 		return
@@ -174,9 +193,9 @@ func (n *NodeTestRun) execute(ctx *EvalContext, waiter *operationWaiter) {
 	}
 
 	if run.Config.Command == configs.PlanTestCommand {
-		n.testPlan(ctx, variables, providers, mocks, waiter)
+		n.testPlan(ctx, variables, providers, waiter)
 	} else {
-		n.testApply(ctx, variables, providers, mocks, waiter)
+		n.testApply(ctx, variables, providers, waiter)
 	}
 }
 
@@ -193,7 +212,8 @@ func (n *NodeTestRun) testValidate(providers map[addrs.RootProviderConfig]provid
 	}
 	waiter.update(tfCtx, moduletest.Running, nil)
 	validateDiags := tfCtx.Validate(config, &terraform.ValidateOpts{
-		ExternalProviders: providers,
+		ExternalProviders:         providers,
+		AllowRootEphemeralOutputs: true,
 	})
 	run.Diagnostics = run.Diagnostics.Append(validateDiags)
 	if validateDiags.HasErrors() {

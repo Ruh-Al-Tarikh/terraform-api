@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package terraform
@@ -90,6 +90,16 @@ func (n *NodeRootVariable) Execute(ctx EvalContext, op walkOperation) tfdiags.Di
 			Value:      cty.NilVal,
 			SourceType: ValueFromUnknown,
 		}
+	}
+
+	if n.Config.DeprecatedSet && !givenVal.Value.IsNull() && givenVal.Value.IsKnown() {
+		diags = diags.Append(&hcl.Diagnostic{
+			Severity: hcl.DiagWarning,
+			Summary:  "Deprecated variable got a value",
+			Detail:   n.Config.Deprecated,
+			Subject:  &n.Config.DeprecatedRange,
+			Context:  &n.Config.DeclRange,
+		})
 	}
 
 	if n.Planning {

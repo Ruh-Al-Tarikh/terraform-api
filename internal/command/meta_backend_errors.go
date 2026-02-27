@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package command
@@ -6,8 +6,46 @@ package command
 import (
 	"fmt"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/terraform/internal/tfdiags"
 )
+
+// errWrongWorkspaceForPlan is a custom error used to alert users that the plan file they are applying
+// describes a workspace that doesn't match the currently selected workspace.
+//
+// This needs to render slightly different errors depending on whether we're using:
+// > CE Workspaces (remote-state backends, local backends)
+// > HCP Terraform Workspaces (cloud backend)
+type errWrongWorkspaceForPlan struct {
+	plannedWorkspace string
+	currentWorkspace string
+	isCloud          bool
+}
+
+func (e *errWrongWorkspaceForPlan) Error() string {
+	msg := fmt.Sprintf(`The plan file describes changes to the %q workspace, but the %q workspace is currently in use.
+
+Applying this plan with the incorrect workspace selected could result in state being stored in an unexpected location, or a downstream error when Terraform attempts apply a plan using the other workspace's state.`,
+		e.plannedWorkspace,
+		e.currentWorkspace,
+	)
+
+	// For users to understand what's happened and how to correct it we'll give some guidance,
+	// but that guidance depends on whether a cloud backend is in use or not.
+	if e.isCloud {
+		// When using the cloud backend the solution is to focus on the cloud block and running init
+		msg = msg + fmt.Sprintf(` If you'd like to continue to use the plan file, make sure the cloud block in your configuration contains the workspace name %q.
+In future, make sure your cloud block is correct and unchanged since the last time you performed "terraform init" before creating a plan.`, e.plannedWorkspace)
+	} else {
+		// When using the backend block the solution is to not select a different workspace
+		// between plan and apply operations.
+		msg = msg + fmt.Sprintf(` If you'd like to continue to use the plan file, you must run "terraform workspace select %s" to select the matching workspace.
+In future make sure the selected workspace is not changed between creating and applying a plan file.
+`, e.plannedWorkspace)
+	}
+
+	return msg
+}
 
 // errBackendLocalRead is a custom error used to alert users that state
 // files on their local filesystem were not erased successfully after
@@ -123,15 +161,21 @@ configuration or state have been made.`, initReason)
 	)
 }
 
+type ssInitReason struct {
+	Reason  string
+	Subject *hcl.Range
+}
+
 // errStateStoreInitDiag creates a diagnostic to present to users when
 // users attempt to run a non-init command after making a change to their
 // state_store configuration.
-//
-// An init reason should be provided as an argument.
-func errStateStoreInitDiag(initReason string) tfdiags.Diagnostic {
-	msg := fmt.Sprintf(`Reason: %s
+func errStateStoreInitDiag(ir *ssInitReason) tfdiags.Diagnostics {
+	var msg string
+	if ir != nil {
+		msg += fmt.Sprintf("Reason: %s\n\n", ir.Reason)
+	}
 
-The "state store" is the interface that Terraform uses to store state when
+	msg += `The "state store" is the interface that Terraform uses to store state when
 performing operations on the local machine. If this message is showing up,
 it means that the Terraform configuration you're using is using a custom
 configuration for state storage in Terraform.
@@ -143,13 +187,27 @@ use the current configuration.
 
 If the change reason above is incorrect, please verify your configuration
 hasn't changed and try again. At this point, no changes to your existing
-configuration or state have been made.`, initReason)
+configuration or state have been made.`
 
-	return tfdiags.Sourceless(
+	var diags tfdiags.Diagnostics
+
+	if ir != nil && ir.Subject != nil {
+		diags = diags.Append(&hcl.Diagnostic{
+			Subject:  ir.Subject,
+			Severity: hcl.DiagError,
+			Summary:  "State store initialization required, please run \"terraform init\"",
+			Detail:   msg,
+		})
+		return diags
+	}
+
+	diags = diags.Append(tfdiags.Sourceless(
 		tfdiags.Error,
 		"State store initialization required, please run \"terraform init\"",
 		msg,
-	)
+	))
+
+	return diags
 }
 
 // errBackendInitCloudDiag creates a diagnostic to present to users when
@@ -185,7 +243,24 @@ above, resolve it, and try again.`, innerError)
 
 	return tfdiags.Sourceless(
 		tfdiags.Error,
-		"HCP Terraform or Terraform Enterprise initialization required: please run \"terraform init\"",
+		"Backend initialization failed",
+		msg,
+	)
+}
+
+// errStateStoreWriteSavedDiag creates a diagnostic to present to users when
+// an init command experiences an error while writing to the backend state file.
+func errStateStoreWriteSavedDiag(innerError error) tfdiags.Diagnostic {
+	msg := fmt.Sprintf(`Error saving the state store configuration: %s
+
+Terraform saves the complete state store configuration in a local file for
+configuring the state store on future operations. This cannot be disabled. Errors
+are usually due to simple file permission errors. Please look at the error
+above, resolve it, and try again.`, innerError)
+
+	return tfdiags.Sourceless(
+		tfdiags.Error,
+		"State store initialization failed",
 		msg,
 	)
 }
@@ -232,3 +307,29 @@ var migrateOrReconfigDiag = tfdiags.Sourceless(
 	"A change in the backend configuration has been detected, which may require migrating existing state.\n\n"+
 		"If you wish to attempt automatic migration of the state, use \"terraform init -migrate-state\".\n"+
 		`If you wish to store the current configuration with no changes to the state, use "terraform init -reconfigure".`)
+
+// migrateOrReconfigStateStoreDiag creates a diagnostic to present to users when
+// an init command encounters a mismatch in state store config state and the current config
+// and Terraform needs users to provide additional instructions about how it
+// should proceed.
+var migrateOrReconfigStateStoreDiag = tfdiags.Sourceless(
+	tfdiags.Error,
+	"State store configuration changed",
+	"A change in the state store configuration has been detected, which may require migrating existing state.\n\n"+
+		"If you wish to attempt automatic migration of the state, use \"terraform init -migrate-state\".\n"+
+		`If you wish to store the current configuration with no changes to the state, use "terraform init -reconfigure".`)
+
+// errStateStoreClearSaved is a custom error used to alert users that
+// Terraform failed to empty the state store state file's contents.
+type errStateStoreClearSaved struct {
+	innerError error
+}
+
+func (e *errStateStoreClearSaved) Error() string {
+	return fmt.Sprintf(`Error clearing the state store configuration: %s
+
+Terraform removes the saved state store configuration when you're removing a
+configured state store. This must be done so future Terraform runs know to not
+use the state store configuration. Please look at the error above, resolve it,
+and try again.`, e.innerError)
+}

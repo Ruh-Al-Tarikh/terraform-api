@@ -1,9 +1,11 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package terraform
 
 import (
+	"slices"
+
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/configs"
 	"github.com/hashicorp/terraform/internal/dag"
@@ -81,6 +83,13 @@ type ApplyGraphBuilder struct {
 	// SkipGraphValidation indicates whether the graph builder should skip
 	// validation of the graph.
 	SkipGraphValidation bool
+
+	// AllowRootEphemeralOutputs overrides a specific check made within the
+	// output nodes that they cannot be ephemeral at within root modules. This
+	// should be set to true for plans executing from within either the stacks
+	// or test runtimes, where the root modules as Terraform sees them aren't
+	// the actual root modules.
+	AllowRootEphemeralOutputs bool
 }
 
 // See GraphBuilder
@@ -110,7 +119,7 @@ func (b *ApplyGraphBuilder) Steps() []GraphTransformer {
 	concreteResourceInstance := func(a *NodeAbstractResourceInstance) dag.Vertex {
 		return &NodeApplyableResourceInstance{
 			NodeAbstractResourceInstance: a,
-			forceReplace:                 b.ForceReplace,
+			forceReplace:                 slices.ContainsFunc(b.ForceReplace, a.Addr.Equal),
 		}
 	}
 
@@ -137,9 +146,10 @@ func (b *ApplyGraphBuilder) Steps() []GraphTransformer {
 		&variableValidationTransformer{},
 		&LocalTransformer{Config: b.Config},
 		&OutputTransformer{
-			Config:     b.Config,
-			Destroying: b.Operation == walkDestroy,
-			Overrides:  b.Overrides,
+			Config:                    b.Config,
+			Destroying:                b.Operation == walkDestroy,
+			Overrides:                 b.Overrides,
+			AllowRootEphemeralOutputs: b.AllowRootEphemeralOutputs,
 		},
 
 		// Creates all the resource instances represented in the diff, along
@@ -157,15 +167,13 @@ func (b *ApplyGraphBuilder) Steps() []GraphTransformer {
 			Operation:     b.Operation,
 			ActionTargets: b.ActionTargets,
 
-			ConcreteActionTriggerNodeFunc: func(node *nodeAbstractActionTriggerExpand, timing RelativeActionTiming) dag.Vertex {
+			ConcreteActionTriggerNodeFunc: func(node *nodeAbstractActionTrigger, timing RelativeActionTiming) dag.Vertex {
 				return &nodeActionTriggerApplyExpand{
-					nodeAbstractActionTriggerExpand: node,
+					nodeAbstractActionTrigger: node,
 
 					relativeTiming: timing,
 				}
 			},
-			// we want before_* actions to run before and after_* actions to run after the resource
-			CreateNodesAsAfter: false,
 		},
 
 		&ActionInvokeApplyTransformer{

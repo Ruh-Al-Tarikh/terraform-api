@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package http
@@ -313,7 +313,13 @@ func (b *Backend) StateMgr(name string) (statemgr.Full, tfdiags.Diagnostics) {
 		return nil, diags.Append(backend.ErrWorkspacesNotSupported)
 	}
 
-	return &remote.State{Client: b.client}, diags
+	sm := &remote.State{Client: b.client}
+
+	if err := sm.RefreshState(); err != nil {
+		return nil, diags.Append(err)
+	}
+
+	return sm, diags
 }
 
 func (b *Backend) Workspaces() ([]string, tfdiags.Diagnostics) {

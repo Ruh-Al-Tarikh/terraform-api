@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package planfile
@@ -63,7 +63,7 @@ func TestRoundtrip(t *testing.T) {
 		VariableValues: map[string]plans.DynamicValue{
 			"foo": plans.DynamicValue([]byte("foo placeholder")),
 		},
-		Backend: plans.Backend{
+		Backend: &plans.Backend{
 			Type:      "local",
 			Config:    plans.DynamicValue([]byte("config placeholder")),
 			Workspace: "default",

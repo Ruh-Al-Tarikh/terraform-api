@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package configs
@@ -38,15 +38,24 @@ type Variable struct {
 	Sensitive   bool
 	Ephemeral   bool
 
+	// Const indicates that this variable can be used during early evaluation
+	// work and configuration loading, for example in module sources
+	Const bool
+
 	DescriptionSet bool
 	SensitiveSet   bool
 	EphemeralSet   bool
+	ConstSet       bool
 
 	// Nullable indicates that null is a valid value for this variable. Setting
 	// Nullable to false means that the module can expect this variable to
 	// never be null.
 	Nullable    bool
 	NullableSet bool
+
+	Deprecated      string
+	DeprecatedSet   bool
+	DeprecatedRange hcl.Range
 
 	DeclRange hcl.Range
 }
@@ -129,6 +138,12 @@ func decodeVariableBlock(block *hcl.Block, override bool) (*Variable, hcl.Diagno
 		v.EphemeralSet = true
 	}
 
+	if attr, exists := content.Attributes["const"]; exists {
+		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &v.Const)
+		diags = append(diags, valDiags...)
+		v.ConstSet = true
+	}
+
 	if attr, exists := content.Attributes["nullable"]; exists {
 		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &v.Nullable)
 		diags = append(diags, valDiags...)
@@ -184,6 +199,13 @@ func decodeVariableBlock(block *hcl.Block, override bool) (*Variable, hcl.Diagno
 		}
 
 		v.Default = val
+	}
+
+	if attr, exists := content.Attributes["deprecated"]; exists {
+		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &v.Deprecated)
+		diags = append(diags, valDiags...)
+		v.DeprecatedSet = true
+		v.DeprecatedRange = attr.Range
 	}
 
 	for _, block := range content.Blocks {
@@ -345,14 +367,17 @@ type Output struct {
 	DependsOn   []hcl.Traversal
 	Sensitive   bool
 	Ephemeral   bool
+	Deprecated  string
 
 	Preconditions []*CheckRule
 
 	DescriptionSet bool
 	SensitiveSet   bool
 	EphemeralSet   bool
+	DeprecatedSet  bool
 
-	DeclRange hcl.Range
+	DeclRange       hcl.Range
+	DeprecatedRange hcl.Range
 }
 
 func decodeOutputBlock(block *hcl.Block, override bool) (*Output, hcl.Diagnostics) {
@@ -402,6 +427,13 @@ func decodeOutputBlock(block *hcl.Block, override bool) (*Output, hcl.Diagnostic
 		o.EphemeralSet = true
 	}
 
+	if attr, exists := content.Attributes["deprecated"]; exists {
+		valDiags := gohcl.DecodeExpression(attr.Expr, nil, &o.Deprecated)
+		diags = append(diags, valDiags...)
+		o.DeprecatedSet = true
+		o.DeprecatedRange = attr.Range
+	}
+
 	if attr, exists := content.Attributes["depends_on"]; exists {
 		deps, depsDiags := DecodeDependsOn(attr)
 		diags = append(diags, depsDiags...)
@@ -441,6 +473,7 @@ func (o *Output) Addr() addrs.OutputValue {
 type Local struct {
 	Name string
 	Expr hcl.Expression
+	Body hcl.Body // for better diagnostics
 
 	DeclRange hcl.Range
 }
@@ -466,6 +499,7 @@ func decodeLocalsBlock(block *hcl.Block) ([]*Local, hcl.Diagnostics) {
 			Name:      name,
 			Expr:      attr.Expr,
 			DeclRange: attr.Range,
+			Body:      block.Body,
 		})
 	}
 	return locals, diags
@@ -499,6 +533,12 @@ var variableBlockSchema = &hcl.BodySchema{
 		{
 			Name: "nullable",
 		},
+		{
+			Name: "deprecated",
+		},
+		{
+			Name: "const",
+		},
 	},
 	Blocks: []hcl.BlockHeaderSchema{
 		{
@@ -524,6 +564,9 @@ var outputBlockSchema = &hcl.BodySchema{
 		},
 		{
 			Name: "ephemeral",
+		},
+		{
+			Name: "deprecated",
 		},
 	},
 	Blocks: []hcl.BlockHeaderSchema{

@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package workdir
@@ -18,16 +18,18 @@ import (
 	ctyjson "github.com/zclconf/go-cty/cty/json"
 )
 
-var _ ConfigState = &StateStoreConfigState{}
-var _ DeepCopier[StateStoreConfigState] = &StateStoreConfigState{}
-var _ PlanDataProvider[plans.StateStore] = &StateStoreConfigState{}
+var (
+	_ ConfigState                        = &StateStoreConfigState{}
+	_ DeepCopier[StateStoreConfigState]  = &StateStoreConfigState{}
+	_ PlanDataProvider[plans.StateStore] = &StateStoreConfigState{}
+)
 
 // StateStoreConfigState describes the physical storage format for the state store
 type StateStoreConfigState struct {
 	Type      string               `json:"type"`     // State store type name
 	Provider  *ProviderConfigState `json:"provider"` // Details about the state-storage provider
 	ConfigRaw json.RawMessage      `json:"config"`   // state_store block raw config, barring provider details
-	Hash      uint64               `json:"hash"`     // Hash of the state_store block's configuration, excluding the provider block and any values supplied via methods other than config
+	Hash      uint64               `json:"hash"`     // Hash of the state_store block's configuration, including the nested provider block
 }
 
 // Empty returns true if there is no active state store.
@@ -39,7 +41,6 @@ func (s *StateStoreConfigState) Empty() bool {
 // important values have been validated, e.g. FQNs. When the config is
 // invalid an error will be returned.
 func (s *StateStoreConfigState) Validate() error {
-
 	// Are any bits of data totally missing?
 	if s.Empty() {
 		return fmt.Errorf("attempted to encode a malformed backend state file; data is empty")
@@ -63,7 +64,7 @@ func (s *StateStoreConfigState) Validate() error {
 	// Version information is required if the provider isn't builtin or unmanaged by Terraform
 	isReattached, err := reattach.IsProviderReattached(*s.Provider.Source, os.Getenv("TF_REATTACH_PROVIDERS"))
 	if err != nil {
-		return fmt.Errorf("error determining if state storage provider is reattached: %w", err)
+		return fmt.Errorf("Unable to determine if state storage provider is reattached while validating backend state file contents. This is a bug in Terraform and should be reported: %w", err)
 	}
 	if (s.Provider.Source.Hostname != tfaddr.BuiltInProviderHost) &&
 		!isReattached {
@@ -114,7 +115,7 @@ func (s *StateStoreConfigState) SetConfig(val cty.Value, schema *configschema.Bl
 // encode the state store-specific configuration settings.
 func (s *StateStoreConfigState) PlanData(storeSchema *configschema.Block, providerSchema *configschema.Block, workspaceName string) (*plans.StateStore, error) {
 	if s == nil {
-		return nil, nil
+		panic("PlanData called on a nil *StateStoreConfigState receiver. This is a bug in Terraform and should be reported.")
 	}
 
 	if err := s.Validate(); err != nil {
@@ -129,7 +130,21 @@ func (s *StateStoreConfigState) PlanData(storeSchema *configschema.Block, provid
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode state_store's nested provider config: %w", err)
 	}
-	return plans.NewStateStore(s.Type, s.Provider.Version, s.Provider.Source, storeConfigVal, storeSchema, providerConfigVal, providerSchema, workspaceName)
+
+	isReattached, err := reattach.IsProviderReattached(*s.Provider.Source, os.Getenv("TF_REATTACH_PROVIDERS"))
+	if err != nil {
+		return nil, fmt.Errorf("Unable to determine if state storage provider is reattached while saving state store data to a plan file. This is a bug in Terraform and should be reported: %w", err)
+	}
+
+	var providerVersion *version.Version
+	if s.Provider.Source.IsBuiltIn() || isReattached {
+		// For built-in providers and reattached providers, we don't require version information to be present in the state file, so we should be tolerant of it being missing. In this case we can just use a placeholder version that will never actually be used for anything, but allows us to avoid returning an error when trying to save state store data to a plan file.
+		providerVersion = version.Must(version.NewVersion("0.0.0"))
+	} else {
+		providerVersion = s.Provider.Version
+	}
+
+	return plans.NewStateStore(s.Type, providerVersion, s.Provider.Source, storeConfigVal, storeSchema, providerConfigVal, providerSchema, workspaceName)
 }
 
 func (s *StateStoreConfigState) DeepCopy() *StateStoreConfigState {
@@ -139,7 +154,6 @@ func (s *StateStoreConfigState) DeepCopy() *StateStoreConfigState {
 	provider := &ProviderConfigState{
 		Version: s.Provider.Version,
 		Source:  s.Provider.Source,
-		Hash:    s.Provider.Hash,
 	}
 	if s.Provider.ConfigRaw != nil {
 		provider.ConfigRaw = make([]byte, len(s.Provider.ConfigRaw))
@@ -168,7 +182,6 @@ type ProviderConfigState struct {
 	Version   *version.Version `json:"version"` // The specific provider version used for the state store. Should be set using a getproviders.Version, etc.
 	Source    *tfaddr.Provider `json:"source"`  // The FQN/fully-qualified name of the provider.
 	ConfigRaw json.RawMessage  `json:"config"`  // state_store block raw config, barring provider details
-	Hash      uint64           `json:"hash"`    // Hash of the nested provider block's configuration, excluding any values supplied via methods other than config
 }
 
 // Empty returns true if there is no provider config state data.

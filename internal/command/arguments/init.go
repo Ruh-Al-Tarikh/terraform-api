@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package arguments
@@ -146,7 +146,7 @@ func ParseInit(args []string, experimentsEnabled bool) (*Init, tfdiags.Diagnosti
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Error,
 				"Cannot use -enable-pluggable-state-storage-experiment flag without experiments enabled",
-				"Terraform cannot use the-enable-pluggable-state-storage-experiment flag (or TF_ENABLE_PLUGGABLE_STATE_STORAGE environment variable) unless experiments are enabled.",
+				"Terraform cannot use the -enable-pluggable-state-storage-experiment flag (or TF_ENABLE_PLUGGABLE_STATE_STORAGE environment variable) unless experiments are enabled.",
 			))
 		}
 		if !init.CreateDefaultWorkspace {

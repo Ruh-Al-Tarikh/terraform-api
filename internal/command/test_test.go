@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package command
@@ -297,7 +297,6 @@ func TestTest_Runs(t *testing.T) {
 		},
 		"mocking-invalid": {
 			expectedErr: []string{
-				"Invalid outputs attribute",
 				"The override_during attribute must be a value of plan or apply.",
 			},
 			initCode: 1,
@@ -409,8 +408,29 @@ func TestTest_Runs(t *testing.T) {
 			expectedOut: []string{"3 passed, 0 failed."},
 			code:        0,
 		},
+		"ephemeral_output": {
+			code: 0,
+		},
+		"ephemeral_output_referenced": {
+			code: 0,
+		},
 		"no-tests": {
 			code: 0,
+		},
+		"simple_pass_function": {
+			expectedOut:           []string{"2 passed, 0 failed."},
+			code:                  0,
+			expectedResourceCount: 0,
+		},
+		"mocking-invalid-outputs": {
+			expectedErr: []string{
+				"Invalid outputs attribute",
+			},
+			code: 1,
+		},
+		"mock-sources-inline": {
+			expectedOut: []string{"2 passed, 0 failed."},
+			code:        0,
 		},
 	}
 	for name, tc := range tcs {
@@ -1250,9 +1270,6 @@ func TestTest_Parallel_Divided_Order(t *testing.T) {
 }
 
 func TestTest_Parallel(t *testing.T) {
-	// Skipped due to flakiness - see https://github.com/hashicorp/terraform/issues/37593
-	t.Skip()
-
 	td := t.TempDir()
 	testCopyDir(t, testFixturePath(path.Join("test", "parallel")), td)
 	t.Chdir(td)
@@ -3998,7 +4015,6 @@ Error: Test assertion failed
   on main.tftest.hcl line 8, in run "first":
    8:     condition     = test_resource.resource.value == output.null_output
     ├────────────────
-    │ Warning: LHS and RHS values are of different types
     │ Diff:
     │ --- actual
     │ +++ expected
@@ -4051,6 +4067,7 @@ Error: Unknown condition value
    8:     condition = output.destroy_fail == run.one.destroy_fail
     ├────────────────
     │ output.destroy_fail is false
+    │ run.one.destroy_fail is a bool
 
 Condition expression could not be evaluated at this time. This means you have
 executed a %s block with %s and one of the values your

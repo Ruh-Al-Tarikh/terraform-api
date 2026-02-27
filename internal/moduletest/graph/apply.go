@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package graph
@@ -23,7 +23,7 @@ import (
 // testApply defines how to execute a run block representing an apply command
 //
 // See also: (n *NodeTestRun).testPlan
-func (n *NodeTestRun) testApply(ctx *EvalContext, variables terraform.InputValues, providers map[addrs.RootProviderConfig]providers.Interface, mocks map[addrs.RootProviderConfig]*configs.MockData, waiter *operationWaiter) {
+func (n *NodeTestRun) testApply(ctx *EvalContext, variables terraform.InputValues, providers map[addrs.RootProviderConfig]providers.Interface, waiter *operationWaiter) {
 	file, run := n.File(), n.run
 	config := run.ModuleConfig
 	key := n.run.Config.StateKey
@@ -37,7 +37,7 @@ func (n *NodeTestRun) testApply(ctx *EvalContext, variables terraform.InputValue
 	tfCtx, _ := terraform.NewContext(n.opts.ContextOpts)
 
 	// execute the terraform plan operation
-	_, plan, planDiags := plan(ctx, tfCtx, file.Config, run.Config, run.ModuleConfig, setVariables, providers, mocks, waiter)
+	_, plan, planDiags := plan(ctx, tfCtx, file.Config, run.Config, run.ModuleConfig, setVariables, providers, waiter)
 
 	// Any error during the planning prevents our apply from
 	// continuing which is an error.
@@ -154,8 +154,9 @@ func apply(tfCtx *terraform.Context, run *configs.TestRun, module *configs.Confi
 	}
 
 	applyOpts := &terraform.ApplyOpts{
-		SetVariables:      ephemeralVariables,
-		ExternalProviders: providers,
+		SetVariables:              ephemeralVariables,
+		ExternalProviders:         providers,
+		AllowRootEphemeralOutputs: true,
 	}
 
 	waiter.update(tfCtx, progress, created)

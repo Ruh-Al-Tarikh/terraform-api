@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package workdir
@@ -37,6 +37,5 @@ func getTestProviderState(t *testing.T, semVer, hostname, namespace, typeName, c
 			Type:      typeName,
 		},
 		ConfigRaw: []byte(config),
-		Hash:      12345,
 	}
 }

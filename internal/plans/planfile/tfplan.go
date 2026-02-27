@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package planfile
@@ -222,17 +222,14 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 		if err != nil {
 			return nil, fmt.Errorf("plan file has invalid backend configuration: %s", err)
 		}
-		plan.Backend = plans.Backend{
+		plan.Backend = &plans.Backend{
 			Type:      rawBackend.Type,
 			Config:    config,
 			Workspace: rawBackend.Workspace,
 		}
 	case rawPlan.StateStore != nil:
 		rawStateStore := rawPlan.StateStore
-		config, err := valueFromTfplan(rawStateStore.Config)
-		if err != nil {
-			return nil, fmt.Errorf("plan file has invalid state_store configuration: %s", err)
-		}
+
 		provider := &plans.Provider{}
 		err = provider.SetSource(rawStateStore.Provider.Source)
 		if err != nil {
@@ -242,11 +239,21 @@ func readTfplan(r io.Reader) (*plans.Plan, error) {
 		if err != nil {
 			return nil, fmt.Errorf("plan file has invalid state_store provider version: %s", err)
 		}
+		providerConfig, err := valueFromTfplan(rawStateStore.Provider.Config)
+		if err != nil {
+			return nil, fmt.Errorf("plan file has invalid state_store configuration: %s", err)
+		}
+		provider.Config = providerConfig
 
-		plan.StateStore = plans.StateStore{
+		storeConfig, err := valueFromTfplan(rawStateStore.Config)
+		if err != nil {
+			return nil, fmt.Errorf("plan file has invalid state_store configuration: %s", err)
+		}
+
+		plan.StateStore = &plans.StateStore{
 			Type:      rawStateStore.Type,
 			Provider:  provider,
-			Config:    config,
+			Config:    storeConfig,
 			Workspace: rawStateStore.Workspace,
 		}
 	}
@@ -737,30 +744,29 @@ func writeTfplan(plan *plans.Plan, w io.Writer) error {
 	}
 
 	// Store details about accessing state
-	backendInUse := plan.Backend.Type != "" && plan.Backend.Config != nil
-	stateStoreInUse := plan.StateStore.Type != "" && plan.StateStore.Config != nil
 	switch {
-	case !backendInUse && !stateStoreInUse:
+	case plan.Backend == nil && plan.StateStore == nil:
 		// This suggests a bug in the code that created the plan, since it
 		// ought to always have either a backend or state_store populated, even if it's the default
 		// "local" backend with a local state file.
 		return fmt.Errorf("plan does not have a backend or state_store configuration")
-	case backendInUse && stateStoreInUse:
+	case plan.Backend != nil && plan.StateStore != nil:
 		// This suggests a bug in the code that created the plan, since it
 		// should never have both a backend and state_store populated.
 		return fmt.Errorf("plan contains both backend and state_store configurations, only one is expected")
-	case backendInUse:
+	case plan.Backend != nil:
 		rawPlan.Backend = &planproto.Backend{
 			Type:      plan.Backend.Type,
 			Config:    valueToTfplan(plan.Backend.Config),
 			Workspace: plan.Backend.Workspace,
 		}
-	case stateStoreInUse:
+	case plan.StateStore != nil:
 		rawPlan.StateStore = &planproto.StateStore{
 			Type: plan.StateStore.Type,
 			Provider: &planproto.Provider{
 				Version: plan.StateStore.Provider.Version.String(),
 				Source:  plan.StateStore.Provider.Source.String(),
+				Config:  valueToTfplan(plan.StateStore.Provider.Config),
 			},
 			Config:    valueToTfplan(plan.StateStore.Config),
 			Workspace: plan.StateStore.Workspace,
@@ -1329,15 +1335,15 @@ func actionInvocationFromTfplan(rawAction *planproto.ActionInvocationInstance) (
 	ret.Addr = actionAddr
 
 	switch at := rawAction.ActionTrigger.(type) {
-	case *planproto.ActionInvocationInstance_LifecycleActionTrigger:
-		triggeringResourceAddrs, diags := addrs.ParseAbsResourceInstanceStr(at.LifecycleActionTrigger.TriggeringResourceAddr)
+	case *planproto.ActionInvocationInstance_ResourceActionTrigger:
+		triggeringResourceAddrs, diags := addrs.ParseAbsResourceInstanceStr(at.ResourceActionTrigger.TriggeringResourceAddr)
 		if diags.HasErrors() {
 			return nil, fmt.Errorf("invalid resource instance address %q: %w",
-				at.LifecycleActionTrigger.TriggeringResourceAddr, diags.Err())
+				at.ResourceActionTrigger.TriggeringResourceAddr, diags.Err())
 		}
 
 		var ate configs.ActionTriggerEvent
-		switch at.LifecycleActionTrigger.TriggerEvent {
+		switch at.ResourceActionTrigger.TriggerEvent {
 		case planproto.ActionTriggerEvent_BEFORE_CERATE:
 			ate = configs.BeforeCreate
 		case planproto.ActionTriggerEvent_AFTER_CREATE:
@@ -1352,12 +1358,12 @@ func actionInvocationFromTfplan(rawAction *planproto.ActionInvocationInstance) (
 			ate = configs.AfterDestroy
 
 		default:
-			return nil, fmt.Errorf("invalid action trigger event %s", at.LifecycleActionTrigger.TriggerEvent)
+			return nil, fmt.Errorf("invalid action trigger event %s", at.ResourceActionTrigger.TriggerEvent)
 		}
-		ret.ActionTrigger = &plans.LifecycleActionTrigger{
+		ret.ActionTrigger = &plans.ResourceActionTrigger{
 			TriggeringResourceAddr:  triggeringResourceAddrs,
-			ActionTriggerBlockIndex: int(at.LifecycleActionTrigger.ActionTriggerBlockIndex),
-			ActionsListIndex:        int(at.LifecycleActionTrigger.ActionsListIndex),
+			ActionTriggerBlockIndex: int(at.ResourceActionTrigger.ActionTriggerBlockIndex),
+			ActionsListIndex:        int(at.ResourceActionTrigger.ActionsListIndex),
 			ActionTriggerEvent:      ate,
 		}
 	case *planproto.ActionInvocationInstance_InvokeActionTrigger:
@@ -1400,7 +1406,7 @@ func actionInvocationToTfPlan(action *plans.ActionInvocationInstanceSrc) (*planp
 	}
 
 	switch at := action.ActionTrigger.(type) {
-	case *plans.LifecycleActionTrigger:
+	case *plans.ResourceActionTrigger:
 		triggerEvent := planproto.ActionTriggerEvent_INVALID_EVENT
 		switch at.ActionTriggerEvent {
 		case configs.BeforeCreate:
@@ -1416,8 +1422,8 @@ func actionInvocationToTfPlan(action *plans.ActionInvocationInstanceSrc) (*planp
 		case configs.AfterDestroy:
 			triggerEvent = planproto.ActionTriggerEvent_AFTER_DESTROY
 		}
-		ret.ActionTrigger = &planproto.ActionInvocationInstance_LifecycleActionTrigger{
-			LifecycleActionTrigger: &planproto.LifecycleActionTrigger{
+		ret.ActionTrigger = &planproto.ActionInvocationInstance_ResourceActionTrigger{
+			ResourceActionTrigger: &planproto.ResourceActionTrigger{
 				TriggerEvent:            triggerEvent,
 				TriggeringResourceAddr:  at.TriggeringResourceAddr.String(),
 				ActionTriggerBlockIndex: int64(at.ActionTriggerBlockIndex),

@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package terraform
@@ -10,11 +10,14 @@ import (
 	tfaddr "github.com/hashicorp/terraform-registry-address"
 	"github.com/zclconf/go-cty/cty"
 
+	"github.com/hashicorp/terraform/internal/configs/configschema"
 	"github.com/hashicorp/terraform/internal/providers"
 )
 
 // Provider is an implementation of providers.Interface
 type Provider struct{}
+
+var _ providers.Interface = &Provider{}
 
 // NewProvider returns a new terraform provider
 func NewProvider() providers.Interface {
@@ -24,7 +27,7 @@ func NewProvider() providers.Interface {
 // GetSchema returns the complete schema for the provider.
 func (p *Provider) GetProviderSchema() providers.GetProviderSchemaResponse {
 	resp := providers.GetProviderSchemaResponse{
-		Provider: providers.Schema{},
+		Provider: providers.Schema{Body: &configschema.Block{}},
 		ServerCapabilities: providers.ServerCapabilities{
 			MoveResourceState: true,
 		},
@@ -99,9 +102,6 @@ func (p *Provider) ValidateProviderConfig(req providers.ValidateProviderConfigRe
 
 // ValidateDataResourceConfig is used to validate the data source configuration values.
 func (p *Provider) ValidateDataResourceConfig(req providers.ValidateDataResourceConfigRequest) providers.ValidateDataResourceConfigResponse {
-	// FIXME: move the backend configuration validate call that's currently
-	// inside the read method  into here so that we can catch provider configuration
-	// errors in terraform validate as well as during terraform plan.
 	var res providers.ValidateDataResourceConfigResponse
 
 	// This should not happen

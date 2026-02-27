@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package terraform
@@ -259,6 +259,22 @@ func mustModuleInstance(s string) addrs.ModuleInstance {
 		panic(diags.Err())
 	}
 	return p
+}
+
+func mustActionInstanceAddr(s string) addrs.AbsActionInstance {
+	addr, diags := addrs.ParseAbsActionInstanceStr(s)
+	if diags.HasErrors() {
+		panic(diags.Err())
+	}
+	return addr
+}
+
+func mustActionAddr(s string) addrs.AbsAction {
+	addr, diags := addrs.ParseAbsActionStr(s)
+	if diags.HasErrors() {
+		panic(diags.Err())
+	}
+	return addr
 }
 
 // HookRecordApplyOrder is a test hook that records the order of applies

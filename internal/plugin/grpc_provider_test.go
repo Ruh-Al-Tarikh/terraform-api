@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package plugin
@@ -2101,4 +2101,37 @@ func TestGRPCProvider_ListResource_Limit(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("Expected 2 events, got %d", len(results))
 	}
+}
+
+func TestGRPCProvider_GenerateResourceConfig(t *testing.T) {
+	client := mockProviderClient(t)
+	p := &GRPCProvider{
+		client: client,
+	}
+	client.EXPECT().GenerateResourceConfig(
+		gomock.Any(),
+		gomock.Cond[any](func(x any) bool {
+			req := x.(*proto.GenerateResourceConfig_Request)
+			if req.TypeName != "resource" {
+				return false
+			}
+			if req.State == nil {
+				t.Log("GenerateResourceConfig state is nil")
+				return false
+			}
+			return true
+		}),
+	).Return(&proto.GenerateResourceConfig_Response{
+		Config: &proto.DynamicValue{
+			Msgpack: []byte("\x81\xa4attr\xa3bar"),
+		},
+	}, nil)
+	resp := p.GenerateResourceConfig(providers.GenerateResourceConfigRequest{
+		TypeName: "resource",
+		State: cty.ObjectVal(map[string]cty.Value{
+			"computed": cty.StringVal("computed"),
+			"attr":     cty.StringVal("foo"),
+		}),
+	})
+	checkDiags(t, resp.Diagnostics)
 }

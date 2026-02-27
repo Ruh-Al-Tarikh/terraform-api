@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: BUSL-1.1
 
 package local
@@ -160,9 +160,10 @@ func TestLocalRun_stalePlan(t *testing.T) {
 	plan := &plans.Plan{
 		UIMode:  plans.NormalMode,
 		Changes: plans.NewChangesSrc(),
-		Backend: plans.Backend{
-			Type:   "local",
-			Config: backendConfigRaw,
+		Backend: &plans.Backend{
+			Type:      "local",
+			Config:    backendConfigRaw,
+			Workspace: "default",
 		},
 		PrevRunState: states.NewState(),
 		PriorState:   states.NewState(),
